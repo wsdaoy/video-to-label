@@ -1,0 +1,23 @@
+{
+  "name": "video-to-label",
+  "version": "0.0.1",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "balm-ui": "^10.29.0",
+    "lodash": "^4.17.21",
+    "vue": "^3.0.4",
+    "xgplayer": "^3.0.18"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.5",
+    "@vue/compiler-sfc": "^3.0.4",
+    "sass": "1.77.6",
+    "unplugin-auto-import": "^0.18.0",
+    "unplugin-vue-components": "^0.27.2",
+    "vite": "^5.3.3"
+  }
+}
