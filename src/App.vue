@@ -3,7 +3,7 @@
     <div class="main-wrapper">
       <div class="left-container">
         <div id="videoWrapper"></div>
-        <div class="video-mask-box" :style="{'--margin-width': `${blackWidth}px`}">
+        <div class="video-mask-box" :style="{ '--margin-width': `${blackWidth}px` }">
           <div class="label-mask" @mousedown.self="maskMousedown" @mouseup.self="maskMouseup"
             @mousemove.self="maskMousemove">
             <div class="label-box" v-for="(litem, lindex) of currentTimeVideoLabelList" :key="'l-' + lindex"
@@ -19,7 +19,7 @@
         </div>
       </div>
       <div class="rigth-container">
-        <div clasBoxSelects="file-wrapper">
+        <div class="file-wrapper">
           <ui-card outlined class="file-card" style="height: 400px;" v-anchor>
             <div style="margin: 6px;">
               <ui-button style="width: 160px;" icon="folder_open" outlined @click="openFileSelect">选择视频</ui-button>
@@ -50,11 +50,13 @@
         <div class="label-wrapper">
           <ui-card outlined class="label-card" style="height: 380px;">
             <div style="margin: 6px;">
-              <ui-button style="width: 160px;" icon="edit" outlined @click="editShortcut">编辑快捷键</ui-button>
-              <ui-button style="width: 180px;margin-left: 8px;" icon="save" outlined
-                @click="saveLabelToFile">保存已标注</ui-button>
+              <ui-button style="width: 100px;" icon="edit" outlined @click="editShortcut">快捷键</ui-button>
+              <ui-button style="width: 160px;margin-left: 8px;" icon="save" outlined
+                @click="saveLabelToFile">保存全部标注</ui-button>
+              <ui-button style="width: 190px;margin-left: 8px;" icon="save_alt" outlined
+                @click="saveCurrentVideoLabelToFile">保存当前视频标注</ui-button>
             </div>
-            <ui-list :type="2">
+            <ui-list :type="2" style="overflow-y: auto;">
               <ui-item v-for="(citem, cindex) in stortcutData" :key="'c-' + cindex">
                 <ui-item-text-content>
                   <ui-item-text1>{{ citem.label }}</ui-item-text1>
@@ -95,7 +97,6 @@
       <ui-dialog-content>
         <div class="stortcut-wrapper">
           <div class="top-btns flex-row flex-y-center">
-            <!-- <ui-button icon="add" outlined @click="stortcutAdd">新增</ui-button> -->
             <ui-textfield v-model="labelValue" :required="true" :class="{ 'demo-text-field-custom-colors': true }"
               helper-text-id="my-text-field-helper-text" @change="labelValueChange"
               @update:modelValue="labelValueChange">
@@ -109,8 +110,11 @@
           </div>
           <div class="content">
             <ui-table :data="stortcutData" :thead="stortcutThead" :tbody="stortcutTbody" style="width: 400px;">
+              <template #borderColor="{ data }">
+                <!-- <ui-rangepicker ></ui-rangepicker> -->
+              </template>
               <template #actions="{ data }">
-                <ui-icon @click="stortcutDel(data)">delete</ui-icon>
+                <ui-icon style="cursor: pointer;" @click="stortcutDel(data)">delete</ui-icon>
               </template>
             </ui-table>
           </div>
@@ -211,6 +215,10 @@ const currentVideo = ref(null)
 
 // 文件资源列表
 const fileList = reactive([])
+// 根目录句柄
+const rootDirHandler = ref(null)
+// 当前视频文件句柄
+const currentVideoDirHandler = ref(null)
 
 // 标签结果列表
 const labelResultMap = reactive(new Map([]))
@@ -222,9 +230,9 @@ const labelResultMap = reactive(new Map([]))
 // 快捷键列表
 const stortcutData = reactive(localStorage.getItem('stortcutData') ? JSON.parse(localStorage.getItem('stortcutData')) : [])
 
-const stortcutThead = reactive(['标签', '快捷键', '操作'])
+const stortcutThead = reactive(['标签', '快捷键', '标注框颜色', '操作'])
 
-const stortcutTbody = reactive(['label', 'shortcutLabel', { slot: 'actions' }])
+const stortcutTbody = reactive(['label', 'shortcutLabel', { slot: 'borderColor' }, { slot: 'actions' }])
 
 const labelValue = ref('')
 const bindLoading = ref(false)
@@ -281,6 +289,7 @@ const currentVideoLabelMap = computed(() => {
 
 let lastVideoUrl = ''
 
+// 快捷键列表
 const keyCodeList = computed(() => {
   const keyCodes = []
   stortcutData.forEach(element => {
@@ -292,6 +301,13 @@ const keyCodeList = computed(() => {
     }
   });
   return keyCodes
+})
+
+const currentVideoFileName = computed(() => {
+  if (!currentVideo.value || !currentVideo.value.text) {
+    return ''
+  }
+  return currentVideo.value.text.substring(0, currentVideo.value.text.lastIndexOf('\.'))
 })
 
 onMounted(() => {
@@ -313,6 +329,7 @@ const cleanFileList = () => {
   fileList.splice(0, fileList.length)
 }
 
+// 选择视频文件夹
 const openFileSelect = async () => {
   // 1、打开文件选择器
   if (!showDirectoryPicker) {
@@ -320,9 +337,20 @@ const openFileSelect = async () => {
     return
   }
   try {
-    const handler = await showDirectoryPicker()
+    const rootHandler = await showDirectoryPicker()
+    rootHandler.requestPermission({ mode: 'readwrite' }).then(async res => {
+      if (res == 'granted') {
+        toast('获取目录权限成功')
+        // 创建一个标注主文件
+        rootDirHandler.value = await rootHandler.getDirectoryHandle(`build-labels`, { create: true })
+      } else {
+        toast('获取目录权限失败:' + res)
+      }
+    }).catch(err => {
+      toast('获取目录权限失败:' + err)
+    })
     fileList.splice(0, fileList.length)
-    await progressHandle(handler)
+    await progressHandle(rootHandler)
     if (fileList.length == 0) {
       toast('目录文件为空')
     }
@@ -380,6 +408,7 @@ const handleBindKeyCode = () => {
         ctrlKey: e.ctrlKey,
         altKey: e.altKey,
         shiftKey: e.shiftKey,
+        borderColor: 'red',
         shortcutLabel: (e.ctrlKey ? 'Ctrl+' : '') + (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + e.key.toLocaleUpperCase()
       })
       localStorage.setItem('stortcutData', JSON.stringify(stortcutData))
@@ -411,13 +440,14 @@ const listenKeydownEvent = () => {
           const element = stortcutData[key];
           currentLabel.value = element.label
           toast(`标签：${element.label} [快捷键 ${element.shortcutLabel}]`)
-
-          labelResultMap.get(currentVideo.value).forEach(i => {
-            if (!i.label) {
-              i.label = currentLabel.value
-              toast(`标注成功：${i.label}`)
-            }
-          })
+          if (labelResultMap.has(currentVideo.value) && labelResultMap.get(currentVideo.value)) {
+            labelResultMap.get(currentVideo.value).forEach(i => {
+              if (!i.label) {
+                i.label = currentLabel.value
+                toast(`标注成功：${i.label}`)
+              }
+            })
+          }
           return
         }
       }
@@ -531,12 +561,12 @@ const maskMouseup = (e) => {
   currentLabelBoxRender.h = 0
 
   // 截图测试
-  // screenShot(player, {
-  //   quality: 1,
-  //   fileName: `${currentVideo.value.text}_${player.currentTime}.png`
-  // })
+  screenShot(player, {
+    quality: 1,
+    fileName: `${player.currentTime}`
+  })
 
-  // player.screenShot()
+  player.screenShot(currentVideoDirHandler.value, `${player.currentTime}`)
 
   // 请输入标签快捷键
   if (!currentLabel.value) {
@@ -556,41 +586,83 @@ const maskMousemove = (e) => {
   currentLabelBoxRender.h = e.offsetY - currentLabelBoxRender.y
 }
 
-const saveLabelToFile = () => {
+// 当前时间戳
+const getCurrentTimeStr = () => new Date().getTime().toString()
+
+// 全部视频的标注
+const saveLabelToFile = async () => {
   if (labelResultMap.size == 0) {
     toast('暂未标注，无法保存')
     return
   }
-
-  const jsonObject = {}
+  const labelDirHandler = await rootDirHandler.value.getDirectoryHandle('labels', { create: true })
 
   labelResultMap.forEach((value, key) => {
-    jsonObject[key.text] = value
+    const _videoName = key.text.substring(0, key.text.lastIndexOf('\.'))
+    const fileName = `${_videoName}.json`
+
+    // 处理标注分组根据time
+    const jsonObject = {}
+    value.forEach(i => {
+      const timeStr = `${i.time}.png`
+      if (!jsonObject[timeStr]) {
+        jsonObject[timeStr] = []
+      }
+      jsonObject[timeStr].push(i)
+    })
+
+    const jsonString = JSON.stringify(jsonObject, null, 2);
+    const fileBlob = new Blob([jsonString], { type: 'application/json' });
+
+    // 保存文件到标注文件夹中
+    labelDirHandler.getFileHandle(fileName, { create: true }).then(fileHandle => {
+      fileHandle.createWritable().then(writable => {
+        writable.write(fileBlob).then(() => {
+          writable.close();
+          toast(`保存全部视频标注成功：${fileName}`)
+        });
+      });
+    });
+  })
+}
+
+// 仅保存当前视频标注
+const saveCurrentVideoLabelToFile = async () => {
+  if (labelResultMap.size == 0) {
+    toast('暂未标注，无法保存')
+    return
+  }
+  const labelDirHandler = await rootDirHandler.value.getDirectoryHandle('labels', { create: true })
+
+  const key = currentVideo.value
+
+  const value = labelResultMap.get(key)
+
+  const _videoName = key.text.substring(0, key.text.lastIndexOf('\.'))
+  const fileName = `${_videoName}.json`
+
+  // 处理标注分组根据time
+  const jsonObject = {}
+  value.forEach(i => {
+    const timeStr = `${i.time}.png`
+    if (!jsonObject[timeStr]) {
+      jsonObject[timeStr] = []
+    }
+    jsonObject[timeStr].push(i)
   })
 
-  // 将JSON对象转换为JSON字符串
   const jsonString = JSON.stringify(jsonObject, null, 2);
+  const fileBlob = new Blob([jsonString], { type: 'application/json' });
 
-  // 创建一个Blob对象，内容为JSON字符串
-  const blob = new Blob([jsonString], { type: 'application/json' });
-
-  // 创建一个链接元素
-  const link = document.createElement('a');
-
-  // 使链接元素指向Blob对象
-  link.href = URL.createObjectURL(blob);
-
-  const timeStr = new Date().toISOString()
-    .replace('Z', '')
-    .replace('T', ' ')
-    .replace(':', '-')
-    .replace('.', '-')
-
-  // 设置下载文件名
-  link.download = `导出标注${timeStr}.json`;
-
-  // 触发下载
-  link.click();
+  // 保存文件到标注文件夹中
+  labelDirHandler.getFileHandle(fileName, { create: true }).then(fileHandle => {
+    fileHandle.createWritable().then(writable => {
+      writable.write(fileBlob).then(() => {
+        writable.close();
+        toast(`保存当前视频标注成功：${fileName}`)
+      });
+    });
+  });
 }
 
 const handleDelLabel = (item) => {
@@ -600,7 +672,6 @@ const handleDelLabel = (item) => {
 
 // 跳转标注时间
 const videoToTime = (time) => {
-  // player.seek(time)
   player.currentTime = time
 }
 
@@ -659,7 +730,7 @@ const initVideoPlayer = () => {
     // 1、计算黑边宽度
     requestAnimationFrame(() => {
       console.log("LOADED_DATA", player._videoHeight, player.sizeInfo.height)
-      videoRate.value = player._videoHeight / ( player.sizeInfo.height - 48 )
+      videoRate.value = player._videoHeight / (player.sizeInfo.height - 48)
       videoRealWidth.value = player._videoWidth / videoRate.value
       videoRealHeight.value = player.sizeInfo.height - 48
       blackWidth.value = (player.sizeInfo.width - videoRealWidth.value) / 2
@@ -689,6 +760,8 @@ const switchVideo = async (video, flag = 0) => {
       currentVideo.value = _currentItem
 
       console.log('player', player)
+      // 创建视频标注文件夹
+      currentVideoDirHandler.value = await rootDirHandler.value.getDirectoryHandle(currentVideoFileName.value, { create: true })
     } else {
       alert(' selected file is not a valid video file.');
     }
