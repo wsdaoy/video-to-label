@@ -139,6 +139,7 @@
 <script setup>
 import Player, { Events } from 'xgplayer';
 import 'xgplayer/dist/index.min.css';
+import screenShot from './js/screenShot'
 import { types, useToast, useConfirm } from 'balm-ui';
 import { computed, h, reactive, ref, watch } from 'vue';
 
@@ -529,8 +530,13 @@ const maskMouseup = (e) => {
   currentLabelBoxRender.w = 0
   currentLabelBoxRender.h = 0
 
-  // 视频坐标映射
-  // player._videoHeigth = 
+  // 截图测试
+  // screenShot(player, {
+  //   quality: 1,
+  //   fileName: `${currentVideo.value.text}_${player.currentTime}.png`
+  // })
+
+  // player.screenShot()
 
   // 请输入标签快捷键
   if (!currentLabel.value) {
@@ -594,6 +600,7 @@ const handleDelLabel = (item) => {
 
 // 跳转标注时间
 const videoToTime = (time) => {
+  // player.seek(time)
   player.currentTime = time
 }
 
