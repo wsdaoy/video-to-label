@@ -5,14 +5,14 @@
         <div id="videoWrapper"></div>
         <div class="video-mask-box" :style="{ '--margin-width': `${blackWidth}px` }">
           <div class="label-mask" @mousedown.self="maskMousedown" @mouseup.self="maskMouseup"
-            @mousemove.self="maskMousemove">
+            @mousemove.self="maskMousemove" :style="`background-image: url(${lastImageUrl});`">
             <div class="label-box" v-for="(litem, lindex) of currentTimeVideoLabelList" :key="'l-' + lindex"
-              :style="{ left: `${litem.x}px`, top: `${litem.y}px`, width: `${litem.w}px`, height: `${litem.h}px` }">
-              <span class="label-span" v-if="litem.w > 0 & litem.h > 0">{{ litem.label }}</span>
-              <ui-icon class="label-box-close" @click.stop="handleDelLabel(litem)">cancel</ui-icon>
+              :style="{ inset: `${litem.y1}px calc(100% - ${litem.x2}px) calc(100% - ${litem.y2}px) ${litem.x1}px`, '--borderColor': litem._borderColor}">
+              <span class="label-span" v-if="litem.x1 != litem.x2 && litem.y1 != litem.y2">{{ litem.label }}</span>
+              <ui-icon class="label-box-close" @click.stop="handleDelLabel(lindex)">cancel</ui-icon>
             </div>
-            <div class="label-box label-box-top" v-show="currentLabelBoxRender.w > 0 & currentLabelBoxRender.h > 0"
-              :style="{ left: `${currentLabelBoxRender.x}px`, top: `${currentLabelBoxRender.y}px`, width: `${currentLabelBoxRender.w}px`, height: `${currentLabelBoxRender.h}px` }">
+            <div class="label-box label-box-top" v-show="x1 != x2 && y1 != y2"
+              :style="{ inset: `${y1}px calc(100% - ${x2}px) calc(100% - ${y2}px) ${x1}px`, '--borderColor': currentLabelBoxRender._borderColor }">
               <span class="label-span">{{ currentLabel }}</span>
             </div>
           </div>
@@ -58,8 +58,13 @@
             </div>
             <ui-list :type="2" style="overflow-y: auto;">
               <ui-item v-for="(citem, cindex) in stortcutData" :key="'c-' + cindex">
+                <ui-item-first-content>
+                  <ui-icon :style="{color: citem.borderColor}">square</ui-icon>
+                </ui-item-first-content>
                 <ui-item-text-content>
-                  <ui-item-text1>{{ citem.label }}</ui-item-text1>
+                  <ui-item-text1>
+                    {{ citem.label }}
+                  </ui-item-text1>
                   <ui-item-text2>按键：{{ citem.shortcutLabel }}</ui-item-text2>
                 </ui-item-text-content>
               </ui-item>
@@ -111,7 +116,7 @@
           <div class="content">
             <ui-table :data="stortcutData" :thead="stortcutThead" :tbody="stortcutTbody" style="width: 400px;">
               <template #borderColor="{ data }">
-                <!-- <ui-rangepicker ></ui-rangepicker> -->
+                <ColorPicker v-model:pureColor="data.borderColor" @update:pureColor="val => data['borderColor']=val" @pureColorChange="handleColorChange" @gradientColorChange="handleColorChange" :disableAlpha="true"/>
               </template>
               <template #actions="{ data }">
                 <ui-icon style="cursor: pointer;" @click="stortcutDel(data)">delete</ui-icon>
@@ -240,11 +245,14 @@ const bindLoading = ref(false)
 // 当前标签
 const currentLabel = ref('')
 const currentLabelBoxRender = reactive({
-  x: 0,
-  y: 0,
-  w: 0,
-  h: 0,
   label: null,
+  _name: null,
+  _time: null,
+  _x: 0,
+  _y: 0,
+  _ox: 0,
+  _oy: 0,
+  _borderColor: 'red'
 })
 
 // 标注框列表
@@ -254,12 +262,33 @@ const currentVideoLabelList = computed(() => {
   }
   return labelResultMap.get(currentVideo.value) || []
 })
+const x1 = computed(() => {
+  return Math.min(currentLabelBoxRender._x, currentLabelBoxRender._ox)
+})
+const x2 = computed(() => {
+  return Math.max(currentLabelBoxRender._x, currentLabelBoxRender._ox)
+})
+const y1 = computed(() => {
+  return Math.min(currentLabelBoxRender._y, currentLabelBoxRender._oy)
+})
+const y2 = computed(() => {
+  return Math.max(currentLabelBoxRender._y, currentLabelBoxRender._oy)
+})
 
 const currentTimeVideoLabelList = computed(() => {
   if (!currentVideo.value) {
     return []
   }
-  return labelResultMap.get(currentVideo.value)?.filter(i => i.time == currentVideoTime.value) || []
+  return labelResultMap.get(currentVideo.value)?.filter(i => i._time == currentVideoTime.value).map(i => {
+    return {
+      x1: Math.min(i._x, i._ox),
+      x2: Math.max(i._x, i._ox),
+      y1: Math.min(i._y, i._oy),
+      y2: Math.max(i._y, i._oy),
+      label: i.label,
+      _borderColor: i._borderColor
+    }
+  }) || []
 })
 
 // 时间线标注预览
@@ -269,18 +298,18 @@ const currentVideoLabelMap = computed(() => {
   if (_tempList.length) {
     _tempList.forEach(item => {
       const _tempKey = item.label
-      if (_tempMap.has(item.time)) {
-        if (_tempMap.get(item.time).has(_tempKey)) {
-          const _tempPMap = _tempMap.get(item.time)
+      if (_tempMap.has(item._time)) {
+        if (_tempMap.get(item._time).has(_tempKey)) {
+          const _tempPMap = _tempMap.get(item._time)
           _tempPMap.set(_tempKey, _tempPMap.get(_tempKey) + 1)
         } else {
-          const _tempPMap = _tempMap.get(item.time)
+          const _tempPMap = _tempMap.get(item._time)
           _tempPMap.set(_tempKey, 1)
         }
       } else {
         const _tempCMap = new Map([])
         _tempCMap.set(_tempKey, 1)
-        _tempMap.set(item.time, _tempCMap)
+        _tempMap.set(item._time, _tempCMap)
       }
     })
   }
@@ -302,6 +331,11 @@ const keyCodeList = computed(() => {
   });
   return keyCodes
 })
+
+const handleColorChange = (val) => {
+  localStorage.setItem('stortcutData', JSON.stringify(stortcutData))
+  console.log("handleColorChange", val)
+}
 
 const currentVideoFileName = computed(() => {
   if (!currentVideo.value || !currentVideo.value.text) {
@@ -391,6 +425,14 @@ const labelValueChange = (val) => {
   }
 }
 
+const getLabelBorderColor = (label) => {
+  if(!label) {
+    return "red"
+  }
+  return stortcutData.find(i=> i.label == label).borderColor
+}
+
+// 绑定快捷键监听按键事件
 const handleBindKeyCode = () => {
   if (labelValue.value) {
     bindLoading.value = true
@@ -444,6 +486,7 @@ const listenKeydownEvent = () => {
             labelResultMap.get(currentVideo.value).forEach(i => {
               if (!i.label) {
                 i.label = currentLabel.value
+                i._borderColor = getLabelBorderColor(currentLabel.value)
                 toast(`标注成功：${i.label}`)
               }
             })
@@ -467,7 +510,6 @@ const listenKeydownEvent = () => {
 }
 
 // 页面改变事件=============
-
 const listenPageEvent = () => {
   window.addEventListener('beforeunload', function (event) {
     // 设置returnValue属性可以显示一个提示信息，询问用户是否确实要离开页面
@@ -488,10 +530,11 @@ const maskMousedown = (e) => {
     return
   }
   mousedownFlag = true
-  currentLabelBoxRender.x = e.offsetX
-  currentLabelBoxRender.y = e.offsetY
-  currentLabelBoxRender.w = 0
-  currentLabelBoxRender.h = 0
+  currentLabelBoxRender._x = e.offsetX
+  currentLabelBoxRender._y = e.offsetY
+  currentLabelBoxRender._ox = e.offsetX
+  currentLabelBoxRender._oy = e.offsetY
+  currentLabelBoxRender._borderColor = getLabelBorderColor(currentLabel.value)
 }
 
 // 完成单次标注
@@ -505,60 +548,40 @@ const maskMouseup = (e) => {
   }
   toast(`标注成功：${player.currentTime}s`)
   mousedownFlag = false
-  currentLabelBoxRender.w = e.offsetX - currentLabelBoxRender.x
-  currentLabelBoxRender.h = e.offsetY - currentLabelBoxRender.y
 
-  if (currentLabelBoxRender.w <= 0 || currentLabelBoxRender.h <= 0) {
+  if (currentLabelBoxRender._x === e.offsetX || currentLabelBoxRender._y === e.offsetY) {
     toast('标注失败：标注框大小不能小于0')
     return
   }
 
   const key = currentVideo.value
+  const _tempLabelItem = {
+    label: currentLabel.value,
+    _name: key.text,
+    _time: player.currentTime,
+    _x: currentLabelBoxRender._x,
+    _y: currentLabelBoxRender._y,
+    _ox: e.offsetX,
+    _oy: e.offsetY,
+    _borderColor: currentLabelBoxRender._borderColor,
+    videoWidth: player._videoWidth,
+    videoHeight: player._videoHeight,
+    x1: currentLabelBoxRender._x * videoRate.value,
+    y1: currentLabelBoxRender._y * videoRate.value,
+    x2: e.offsetX * videoRate.value,
+    y2: e.offsetX * videoRate.value,
+  }
   // 设置标注map
   if (labelResultMap.has(key)) {
-    labelResultMap.get(key).push({
-      name: key.text,
-      label: currentLabel.value,
-      time: player.currentTime,
-      x: currentLabelBoxRender.x,
-      y: currentLabelBoxRender.y,
-      w: currentLabelBoxRender.w,
-      h: currentLabelBoxRender.h,
-      rate: videoRate.value,
-      realWidth: videoRealWidth,
-      realHeight: videoRealHeight,
-      videoWidth: player._videoWidth,
-      videoHeight: player._videoHeight,
-      rx: currentLabelBoxRender.x * videoRate.value,
-      ry: currentLabelBoxRender.y * videoRate.value,
-      rw: currentLabelBoxRender.w * videoRate.value,
-      rh: currentLabelBoxRender.h * videoRate.value,
-    })
+    labelResultMap.get(key).push(_tempLabelItem)
   } else {
-    labelResultMap.set(key, [{
-      name: key.text,
-      label: currentLabel.value,
-      time: player.currentTime,
-      x: currentLabelBoxRender.x,
-      y: currentLabelBoxRender.y,
-      w: currentLabelBoxRender.w,
-      h: currentLabelBoxRender.h,
-      rate: videoRate.value,
-      realWidth: videoRealWidth,
-      realHeight: videoRealHeight,
-      videoWidth: player._videoWidth,
-      videoHeight: player._videoHeight,
-      rx: currentLabelBoxRender.x * videoRate.value,
-      ry: currentLabelBoxRender.y * videoRate.value,
-      rw: currentLabelBoxRender.w * videoRate.value,
-      rh: currentLabelBoxRender.h * videoRate.value,
-    }])
+    labelResultMap.set(key, [_tempLabelItem])
   }
 
-  currentLabelBoxRender.x = 0
-  currentLabelBoxRender.y = 0
-  currentLabelBoxRender.w = 0
-  currentLabelBoxRender.h = 0
+  currentLabelBoxRender._x = 0
+  currentLabelBoxRender._y = 0
+  currentLabelBoxRender._ox = 0
+  currentLabelBoxRender._oy = 0
 
   // 截图测试
   screenShot(player, {
@@ -582,8 +605,8 @@ const maskMousemove = (e) => {
     toast('请选择视频')
     return
   }
-  currentLabelBoxRender.w = e.offsetX - currentLabelBoxRender.x
-  currentLabelBoxRender.h = e.offsetY - currentLabelBoxRender.y
+  currentLabelBoxRender._ox = e.offsetX
+  currentLabelBoxRender._oy = e.offsetY
 }
 
 // 当前时间戳
@@ -604,7 +627,7 @@ const saveLabelToFile = async () => {
     // 处理标注分组根据time
     const jsonObject = {}
     value.forEach(i => {
-      const timeStr = `${i.time}.png`
+      const timeStr = `${i._time}.png`
       if (!jsonObject[timeStr]) {
         jsonObject[timeStr] = []
       }
@@ -644,7 +667,7 @@ const saveCurrentVideoLabelToFile = async () => {
   // 处理标注分组根据time
   const jsonObject = {}
   value.forEach(i => {
-    const timeStr = `${i.time}.png`
+    const timeStr = `${i._time}.png`
     if (!jsonObject[timeStr]) {
       jsonObject[timeStr] = []
     }
@@ -665,27 +688,41 @@ const saveCurrentVideoLabelToFile = async () => {
   });
 }
 
-const handleDelLabel = (item) => {
-  const _tempList = labelResultMap.get(currentVideo.value)
-  _tempList.splice(_tempList.indexOf(item), 1)
+const handleDelLabel = (index) => {
+  labelResultMap.get(currentVideo.value)?.splice(index, 1)
 }
 
+let lastImageUrl = ref(null)
+
 // 跳转标注时间
-const videoToTime = (time) => {
+const videoToTime = async (time) => {
+  console.log(`跳转到时间:${time}`)
+  player.pause()
   player.currentTime = time
+  // 获取本地截图URL
+  const _currentTimeFile = await currentVideoDirHandler.value.getFileHandle(`${time}.png`, { create: false })
+  const _file = await _currentTimeFile.getFile()
+  if (_file.type.startsWith('image/')) {
+      var URL = window.URL || window.webkitURL;
+      if (lastImageUrl.value) {
+        URL.revokeObjectURL(lastImageUrl.value)
+      }
+      lastImageUrl.value = URL.createObjectURL(_file);
+    } else {
+      toast("该文件不是图片类型")
+    }
 }
 
 // 清除标注
 const delLabelByTime = (time) => {
   labelResultMap.get(currentVideo.value).forEach(i => {
-    if (i.time == time) {
+    if (i._time == time) {
       labelResultMap.get(currentVideo.value).splice(labelResultMap.get(currentVideo.value).indexOf(i), 1)
     }
   })
 }
 
 // 初始化视频播放==================
-
 let videoInitLoading = false
 
 const initVideoPlayer = () => {
@@ -725,6 +762,13 @@ const initVideoPlayer = () => {
     }
     currentVideoTime.value = player.currentTime
     console.log(`视频时间改变${player.currentTime}`)
+  })
+  player.on(Events.PLAY, () => {
+    if(lastImageUrl.value) {
+      console.log("移除截图")
+      URL.revokeObjectURL(lastImageUrl.value)
+      lastImageUrl.value = null
+    }
   })
   player.on(Events.LOADED_DATA, () => {
     // 1、计算黑边宽度
@@ -806,6 +850,7 @@ const switchVideo = async (video, flag = 0) => {
         .label-mask {
           width: 100%;
           height: 100%;
+          background-size: 100%;
           position: absolute;
           top: 0;
           left: 0;
@@ -813,23 +858,21 @@ const switchVideo = async (video, flag = 0) => {
           overflow: hidden;
 
           .label-box {
-            width: 100px;
-            height: 100px;
+            --borderColor: red;
             position: absolute;
-            top: 0;
-            left: 0;
-            background-color: #ff00000f;
-            box-shadow: 0 0 0 1px red inset;
+            inset: 0;
+            background-color: #2222221a;
+            box-shadow: 0 0 0 1px var(--borderColor) inset;
             pointer-events: none;
             z-index: 2;
 
             .label-span {
-              background-color: red;
+              background-color: var(--borderColor);
               color: white;
             }
 
             .label-box-close {
-              font-size: 20px;
+              font-size: 18px;
               color: #c1c1c1;
               position: absolute;
               right: -10px;
@@ -837,10 +880,11 @@ const switchVideo = async (video, flag = 0) => {
               background-color: #ffffff;
               border-radius: 50%;
               pointer-events: auto;
+              cursor: pointer;
               z-index: 5;
 
               &:hover {
-                animation: hoverAnimation 0.3s ease-in-out forwards;
+                animation: hoverAnimation 0.2s ease-in-out forwards;
               }
             }
 
@@ -851,6 +895,7 @@ const switchVideo = async (video, flag = 0) => {
 
               100% {
                 transform: scale(1.2);
+                color: #999999;
               }
             }
           }
